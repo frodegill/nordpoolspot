@@ -51,14 +51,15 @@ void nordpoolspot::nowAsString(char* buf, const size_t& buf_len)
   ::strftime(buf, buf_len-1, "%a, %d %b %Y %H:%M:%S %Z", &tm);
 }
 
-void nordpoolspot::closeConnection(const std::shared_ptr<restbed::Session> session, int response_status, const std::string& response_body)
+void nordpoolspot::closeConnection(const std::shared_ptr<restbed::Session> session, int response_status,
+                                   const std::string& response_body, const std::string& encoding)
 {
 	char date_str[100];
 	nordpoolspot::nowAsString(date_str, sizeof(date_str)/sizeof(date_str[0]));
 	session->close(response_status, response_body,
 								 {{"Server", "nordpool spot munin node"},
 								  {"Date", date_str},
-								  {"Content-Type", "text/plain; charset=utf-8"},
+								  {"Content-Type", "text/plain; charset="+encoding},
 								  {"Content-Length", std::to_string(response_body.size())}});
 }
 

@@ -319,7 +319,7 @@ void nordpoolspot::spot_handler(const std::shared_ptr<restbed::Session> session)
     response_body += "NO"+std::to_string(i+1)+".value "+std::to_string(g_spotprice_cache.get_price(i)/10.0)+"\n"; //Price is NOK/MWh, we want Øre/KWh. Thus: divide by 10
   }
 
-  closeConnection(session, restbed::OK, response_body);
+  closeConnection(session, restbed::OK, response_body, "iso-8859-1");
 }
 
 #ifdef RUN_TEST

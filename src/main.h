@@ -15,7 +15,8 @@ namespace nordpoolspot {
 void log(FILE* stream, const char* format, ...);
 
 void nowAsString(char* buf, const size_t& buf_len);
-void closeConnection(const std::shared_ptr<restbed::Session> session, int response_status, const std::string& response_body);
+void closeConnection(const std::shared_ptr<restbed::Session> session, int response_status,
+                     const std::string& response_body, const std::string& encoding);
 
 } // namespace nordpoolspot
 
