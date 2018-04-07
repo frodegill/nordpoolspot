@@ -155,7 +155,18 @@ std::unique_ptr<SpotPrice> SpotPriceCache::fetch_prices(const std::chrono::syste
     auto json_root = parser.parse(session->receiveResponse(res));
 #endif
 
+    if (!json_root)
+    {
+      log(stdout, "Couldn't parse JSON root object");
+      return nullptr;
+    }
+
     auto object_root = json_root.extract<Poco::JSON::Object::Ptr>();
+    if (!object_root)
+    {
+      log(stdout, "Couldn't extract JSON root object");
+      return nullptr;
+    }
 
     int page_id = object_root->getValue<int>("pageId");
     if (10 != page_id)
@@ -181,87 +192,102 @@ std::unique_ptr<SpotPrice> SpotPriceCache::fetch_prices(const std::chrono::syste
 #endif
 
     Poco::JSON::Object::Ptr data_object = object_root->getObject("data");
-    if (data_object)
+    if (!data_object)
     {
-      Poco::JSON::Array::Ptr rows_array = data_object->getArray("Rows");
-      for(size_t row_index=0; rows_array && row_index<rows_array->size(); row_index++)
+      log(stdout, "Couldn't get data object");
+      return nullptr;
+    }
+
+    Poco::JSON::Array::Ptr rows_array = data_object->getArray("Rows");
+    if (!rows_array)
+    {
+      log(stdout, "Couldn't get rows array");
+      return nullptr;
+    }
+
+    for(size_t row_index=0; rows_array && row_index<rows_array->size(); row_index++)
+    {
+      Poco::JSON::Object::Ptr row_object = rows_array->getObject(row_index);
+      
+      if (true == row_object->getValue<bool>("IsExtraRow"))
       {
-        Poco::JSON::Object::Ptr row_object = rows_array->getObject(row_index);
-        
-        if (true == row_object->getValue<bool>("IsExtraRow"))
-        {
 #ifdef VERBOSE_LOG
-          log(stdout, "Skipping %s", row_object->getValue<std::string>("Name").c_str());
+        log(stdout, "Skipping %s", row_object->getValue<std::string>("Name").c_str());
 #endif
-          continue;
-        }
-        
-        int start_year, start_month, start_day, start_hour, start_minute, start_second;
-        if (EOF == ::sscanf(row_object->getValue<std::string>("StartTime").c_str(), "%04d-%02d-%02dT%02d:%02d:%02d",
-          &start_year, &start_month, &start_day, &start_hour, &start_minute, &start_second))
-        {
-          continue;
-        }
+        continue;
+      }
+      
+      int start_year, start_month, start_day, start_hour, start_minute, start_second;
+      if (EOF == ::sscanf(row_object->getValue<std::string>("StartTime").c_str(), "%04d-%02d-%02dT%02d:%02d:%02d",
+        &start_year, &start_month, &start_day, &start_hour, &start_minute, &start_second))
+      {
+        continue;
+      }
 
 #ifndef SKIP_DATE_CHECK
-        if ((time_local_tm.tm_year+1900)!=start_year ||
-            (time_local_tm.tm_mon+1)!=start_month ||
-            time_local_tm.tm_mday!=start_day ||
-            start_minute!=0 ||
-            start_second!=0)
-        {
-          continue;
-        }
+      if ((time_local_tm.tm_year+1900)!=start_year ||
+          (time_local_tm.tm_mon+1)!=start_month ||
+          time_local_tm.tm_mday!=start_day ||
+          start_minute!=0 ||
+          start_second!=0)
+      {
+        continue;
+      }
 #endif
-        if (start_hour<0 || start_hour>=HOURS)
+      if (start_hour<0 || start_hour>=HOURS)
+      {
+        continue;
+      }
+
+      Poco::JSON::Array::Ptr columns_array = row_object->getArray("Columns");
+      if (!columns_array)
+      {
+        log(stdout, "Couldn't get columns array");
+        continue;
+      }
+
+      for(size_t column_index=0; columns_array && column_index<columns_array->size(); column_index++)
+      {
+        Poco::JSON::Object::Ptr column_object = columns_array->getObject(column_index);
+
+        uint8_t zone = UNKNOWN;
+        std::string name = column_object->getValue<std::string>("Name");
+        if (EQUAL==name.compare("Oslo") || EQUAL==name.compare("NO1"))
         {
-          continue;
+          zone = NO1;
+        }
+        else if (EQUAL==name.compare("Kr.sand") || EQUAL==name.compare("NO2"))
+        {
+          zone = NO2;
+        }
+        else if (EQUAL==name.compare("Molde") || EQUAL==name.compare("Tr.heim") || EQUAL==name.compare("NO3"))
+        {
+          zone = NO3;
+        }
+        else if (EQUAL==name.compare("Tromsø") || EQUAL==name.compare("NO4"))
+        {
+          zone = NO4;
+        }
+        else if (EQUAL==name.compare("Bergen") || EQUAL==name.compare("NO5"))
+        {
+          zone = NO5;
         }
 
-        Poco::JSON::Array::Ptr columns_array = row_object->getArray("Columns");
-        for(size_t column_index=0; columns_array && column_index<columns_array->size(); column_index++)
+        if (zone<=ZONES)
         {
-          Poco::JSON::Object::Ptr column_object = columns_array->getObject(column_index);
+          double value;
 
-          uint8_t zone = UNKNOWN;
-          std::string name = column_object->getValue<std::string>("Name");
-          if (EQUAL==name.compare("Oslo") || EQUAL==name.compare("NO1"))
-          {
-            zone = NO1;
-          }
-          else if (EQUAL==name.compare("Kr.sand") || EQUAL==name.compare("NO2"))
-          {
-            zone = NO2;
-          }
-          else if (EQUAL==name.compare("Molde") || EQUAL==name.compare("Tr.heim") || EQUAL==name.compare("NO3"))
-          {
-            zone = NO3;
-          }
-          else if (EQUAL==name.compare("Tromsø") || EQUAL==name.compare("NO4"))
-          {
-            zone = NO4;
-          }
-          else if (EQUAL==name.compare("Bergen") || EQUAL==name.compare("NO5"))
-          {
-            zone = NO5;
-          }
-
-          if (zone<=ZONES)
-          {
-            double value;
-
-            const char* old_locale = ::setlocale(LC_NUMERIC, nullptr);
-            ::setlocale(LC_NUMERIC, "nb_NO.utf8");
-            int sscanf_result = ::sscanf(column_object->getValue<std::string>("Value").c_str(), "%lf", &value);
-            ::setlocale(LC_NUMERIC, old_locale);
-            
-            if (EOF == sscanf_result)
-            {
-              continue;
-            }
+          const char* old_locale = ::setlocale(LC_NUMERIC, nullptr);
+          ::setlocale(LC_NUMERIC, "nb_NO.utf8");
+          int sscanf_result = ::sscanf(column_object->getValue<std::string>("Value").c_str(), "%lf", &value);
+          ::setlocale(LC_NUMERIC, old_locale);
           
-            spot_price->m_price[start_hour][zone] = value;
+          if (EOF == sscanf_result)
+          {
+            continue;
           }
+        
+          spot_price->m_price[start_hour][zone] = value;
         }
       }
     }
