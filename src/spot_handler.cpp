@@ -77,8 +77,6 @@ uint32_t SpotPriceCache::to_key(const std::chrono::system_clock::time_point& tim
 
 std::unique_ptr<SpotPrice> SpotPriceCache::fetch_prices(const std::chrono::system_clock::time_point& time)
 {
-  ::setlocale(LC_NUMERIC, "nb_NO.utf8");
-  
   std::unique_ptr<SpotPrice> spot_price = std::make_unique<SpotPrice>();
   auto time_t = std::chrono::system_clock::to_time_t(time);
   auto time_local_tm = *localtime(&time_t); //We want local time
@@ -251,7 +249,13 @@ std::unique_ptr<SpotPrice> SpotPriceCache::fetch_prices(const std::chrono::syste
           if (zone<=ZONES)
           {
             double value;
-            if (EOF == ::sscanf(column_object->getValue<std::string>("Value").c_str(), "%lf", &value))
+
+            const char* old_locale = ::setlocale(LC_NUMERIC, nullptr);
+            ::setlocale(LC_NUMERIC, "nb_NO.utf8");
+            int sscanf_result = ::sscanf(column_object->getValue<std::string>("Value").c_str(), "%lf", &value);
+            ::setlocale(LC_NUMERIC, old_locale);
+            
+            if (EOF == sscanf_result)
             {
               continue;
             }
