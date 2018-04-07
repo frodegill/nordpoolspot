@@ -1,0 +1,14 @@
+#!/bin/bash
+#
+
+if [ "$1" = "autoconf" ]; then
+	echo yes 
+	exit 0
+fi
+
+if [ "$1" = "config" ]; then
+	wget -q -O - http://localhost:1417/nordpoolspot/config
+	exit 0
+fi
+
+wget -q -O - http://localhost:1417/nordpoolspot/values
