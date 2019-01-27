@@ -1,7 +1,5 @@
 #include "spot_handler.h"
 
-#include <locale.h>
-
 #include <Poco/JSON/Parser.h>
 #ifdef DEBUG_LOCAL_FILE
 # include <Poco/File.h>
@@ -275,18 +273,35 @@ std::unique_ptr<SpotPrice> SpotPriceCache::fetch_prices(const std::chrono::syste
 
         if (zone<=ZONES)
         {
-          double value;
-
-          const char* old_locale = ::setlocale(LC_NUMERIC, nullptr);
-          ::setlocale(LC_NUMERIC, "nb_NO.utf8");
-          int sscanf_result = ::sscanf(column_object->getValue<std::string>("Value").c_str(), "%lf", &value);
-          ::setlocale(LC_NUMERIC, old_locale);
-          
-          if (EOF == sscanf_result)
+          const char* value_string = column_object->getValue<std::string>("Value").c_str();
+          char* locale_invariant_string = new char[strlen(value_string)+1];
+          const char* source = value_string;
+          char* destination = locale_invariant_string;
+          while (*source)
           {
-            continue;
+            if (*source>='0' && *source<='9')
+            {
+              *destination++ = *source;
+            }
+            else if (*source==',' || *source=='.')
+            {
+              *destination++ = '.';
+            }
+            
+            source++;
           }
-        
+          
+          if (destination == locale_invariant_string)
+          {
+            *destination++ = '0';
+          }
+          
+          *destination = 0;
+
+          double value = atof(locale_invariant_string);
+
+          delete[] locale_invariant_string;
+          
           spot_price->m_price[start_hour][zone] = value;
         }
       }
