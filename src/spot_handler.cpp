@@ -92,9 +92,9 @@ std::unique_ptr<SpotPrice> SpotPriceCache::fetch_prices(const std::chrono::syste
   try
   {
     // prepare session
-    char date_str[11];
+    char date_str[14];
     snprintf(date_str, sizeof(date_str)/sizeof(date_str[0]), "%02d-%02d-%04d",
-             time_local_tm.tm_mday, time_local_tm.tm_mon+1, time_local_tm.tm_year+1900); 
+             (time_local_tm.tm_mday)%100, (time_local_tm.tm_mon+1)%100, (time_local_tm.tm_year+1900)%10000); 
 
 #ifdef VERBOSE_LOG
     log(stdout, "Preparing session for %s", date_str);
