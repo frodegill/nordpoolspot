@@ -279,7 +279,7 @@ std::unique_ptr<SpotPrice> SpotPriceCache::fetch_prices(const std::chrono::syste
           char* destination = locale_invariant_string;
           while (*source)
           {
-            if (*source>='0' && *source<='9')
+            if ((*source>='0' && *source<='9') || *source=='-')
             {
               *destination++ = *source;
             }
