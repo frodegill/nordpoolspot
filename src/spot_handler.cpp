@@ -139,6 +139,7 @@ std::unique_ptr<SpotPrice> SpotPriceCache::fetch_prices(const std::chrono::syste
 
     // send request
     Poco::Net::HTTPRequest req(Poco::Net::HTTPRequest::HTTP_GET, path, Poco::Net::HTTPMessage::HTTP_1_1);
+    session->setKeepAliveTimeout(Poco::Timespan(30, 0));
     session->sendRequest(req);
 
     // get response
@@ -310,6 +311,12 @@ std::unique_ptr<SpotPrice> SpotPriceCache::fetch_prices(const std::chrono::syste
   catch (Poco::Exception &ex)
   {
     log(stdout, ex.displayText().c_str());
+    return nullptr; 
+  }
+  catch (...)
+  {
+    log(stdout, "Fetching failed");
+    return nullptr; 
   }
 
   return spot_price;
