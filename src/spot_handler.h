@@ -14,6 +14,7 @@ namespace nordpoolspot {
 # define SKIP_DATE_CHECK
 #else
   static const std::string SPOT_URL = std::string("https://www.nordpoolgroup.com/api/marketdata/page/10");
+  static const std::string EUR_URL = std::string("https://api.exchangeratesapi.io/latest?base=EUR&symbols=NOK");
 #endif
 
 static const uint8_t TODAY = 0;
@@ -32,6 +33,8 @@ static const uint8_t NO4 = 3;
 static const uint8_t NO5 = 4;
 static const uint8_t UNKNOWN = 255;
 
+static const double INVALID_EUR_RATE = -1.0;
+
 struct SpotPrice {
   uint32_t m_key;
   double m_price[HOURS][ZONES];
@@ -47,6 +50,7 @@ public:
   
 private:
   uint32_t to_key(const std::chrono::system_clock::time_point& time);
+  double fetch_eur();
   std::unique_ptr<SpotPrice> fetch_prices(const std::chrono::system_clock::time_point& time);
 
 private:

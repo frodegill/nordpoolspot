@@ -73,8 +73,94 @@ uint32_t SpotPriceCache::to_key(const std::chrono::system_clock::time_point& tim
   return (time_local_tm.tm_year+1900)*100*100 + (time_local_tm.tm_mon+1)*100 + time_local_tm.tm_mday;
 }
 
+double SpotPriceCache::fetch_eur()
+{
+  try
+  {
+    log(stdout, "Fetching EUR-NOK exchange rate");
+#ifdef DEBUG_LOCAL_FILE
+    return 1.0;
+#else
+    Poco::URI uri(EUR_URL);
+    std::unique_ptr<Poco::Net::HTTPClientSession> session;
+    if(EQUAL == uri.getScheme().compare("https"))
+    {
+      session = std::make_unique<Poco::Net::HTTPSClientSession>(uri.getHost(), uri.getPort());
+    }
+    else
+    {
+      session = std::make_unique<Poco::Net::HTTPClientSession>(uri.getHost(), uri.getPort());
+    }
+
+    // prepare path
+    std::string path(uri.getPathAndQuery());
+    if (path.empty()) path = "/";
+
+    // send request
+    Poco::Net::HTTPRequest req(Poco::Net::HTTPRequest::HTTP_GET, path, Poco::Net::HTTPMessage::HTTP_1_1);
+    session->setKeepAliveTimeout(Poco::Timespan(30, 0));
+    session->sendRequest(req);
+
+    // get response
+    Poco::Net::HTTPResponse res;
+    if (Poco::Net::HTTPResponse::HTTP_OK != res.getStatus())
+    {
+      log(stdout, "HTTP %d: %s", res.getStatus(), res.getReason().c_str());
+      return INVALID_EUR_RATE;
+    }
+
+    Poco::JSON::Parser parser;
+    auto json_root = parser.parse(session->receiveResponse(res));
+#endif
+
+    if (!json_root)
+    {
+      log(stdout, "Couldn't parse JSON root object");
+      return INVALID_EUR_RATE;
+    }
+
+    auto object_root = json_root.extract<Poco::JSON::Object::Ptr>();
+    if (!object_root)
+    {
+      log(stdout, "Couldn't extract JSON root object");
+      return INVALID_EUR_RATE;
+    }
+
+    std::string base_currency = object_root->getValue<std::string>("base");
+    if (0 != base_currency.compare("EUR"))
+    {
+      log(stdout, "Expected currency=EUR, got currency=%s", base_currency.c_str());
+      return INVALID_EUR_RATE;
+    }
+
+    Poco::JSON::Object::Ptr rates_object = object_root->getObject("rates");
+    if (!rates_object)
+    {
+      log(stdout, "Couldn't get rates object");
+      return INVALID_EUR_RATE;
+    }
+
+    return rates_object->getValue<double>("NOK");
+  }
+  catch (Poco::Exception &ex)
+  {
+    log(stdout, ex.displayText().c_str());
+    return INVALID_EUR_RATE;
+  }
+  catch (...)
+  {
+    log(stdout, "Fetching failed");
+    return INVALID_EUR_RATE;
+  }
+}
+
 std::unique_ptr<SpotPrice> SpotPriceCache::fetch_prices(const std::chrono::system_clock::time_point& time)
 {
+  double eur_rate = fetch_eur();
+  if (INVALID_EUR_RATE == eur_rate) {
+    return nullptr;
+  }
+
   std::unique_ptr<SpotPrice> spot_price = std::make_unique<SpotPrice>();
   auto time_t = std::chrono::system_clock::to_time_t(time);
   auto time_local_tm = *localtime(&time_t); //We want local time
@@ -122,7 +208,7 @@ std::unique_ptr<SpotPrice> SpotPriceCache::fetch_prices(const std::chrono::syste
 	Poco::JSON::Parser parser;
 	auto json_root = parser.parse(ostr.str());
 #else
-    Poco::URI uri(SPOT_URL+"?currency=NOK&endDate="+std::string(date_str));
+    Poco::URI uri(SPOT_URL+"?currency=EUR&endDate="+std::string(date_str));
     std::unique_ptr<Poco::Net::HTTPClientSession> session;
     if(EQUAL == uri.getScheme().compare("https"))
     {
@@ -175,9 +261,9 @@ std::unique_ptr<SpotPrice> SpotPriceCache::fetch_prices(const std::chrono::syste
     }
 
     std::string currency = object_root->getValue<std::string>("currency");
-    if (0 != currency.compare("NOK"))
+    if (0 != currency.compare("EUR"))
     {
-      log(stdout, "Expected currency=NOK, got currency=%s", currency.c_str());
+      log(stdout, "Expected currency=EUR, got currency=%s", currency.c_str());
       return nullptr;
     }
     
@@ -303,7 +389,7 @@ std::unique_ptr<SpotPrice> SpotPriceCache::fetch_prices(const std::chrono::syste
 
           delete[] locale_invariant_string;
           
-          spot_price->m_price[start_hour][zone] = value;
+          spot_price->m_price[start_hour][zone] = value * eur_rate;
         }
       }
     }
